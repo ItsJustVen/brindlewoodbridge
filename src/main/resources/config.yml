@@ -1,0 +1,25 @@
+# BrindleWood Bridge — plugin config
+# secret MUST match BRIDGE_SECRET in the bot's .env exactly, or the
+# connection will be silently rejected (wrong key = failed decryption,
+# which the bot treats identically to a malicious/garbage connection).
+bridge:
+  host: "127.0.0.1"        # hostname/IP where the bot process runs
+  port: 8443                 # must match BRIDGE_PORT in the bot's .env
+  secret: "CHANGE_ME_TO_MATCH_BRIDGE_SECRET"
+  reconnectDelaySeconds: 10
+
+# Run once: leave blank until you use /bwbridge pair <code> with the code
+# from the bot's /bridge pair command. After a successful pairing the bot
+# remembers it and this doesn't need to be set again.
+pairCode: ""
+
+playtimeHeartbeatMinutes: 5
+
+# Command template run on this server when a rank-sync push arrives from
+# Discord. {player} and {role} are substituted. Adjust to whatever
+# permissions plugin this server actually runs (LuckPerms shown as the
+# common default) — this is intentionally not hardcoded to one plugin.
+rankSyncCommandTemplate: "lp user {player} parent set {role}"
+
+# Command template run when a player finishes linking on the Discord side.
+linkRewardCommandTemplate: "give {player} minecraft:diamond 1"
