@@ -52,7 +52,7 @@ public class BridgeClient {
                     plugin.getLogger().info("[Bridge] Connected, authenticating...");
                     JsonObject hello = new JsonObject();
                     if (pairCodeOrNull != null && !pairCodeOrNull.isEmpty()) hello.addProperty("pairCode", pairCodeOrNull);
-                    send("hello", hello);
+                    BridgeClient.this.send("hello", hello);
                 }
 
                 @Override
