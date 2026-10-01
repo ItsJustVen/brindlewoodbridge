@@ -116,6 +116,11 @@ public class BrindleWoodBridgePlugin extends JavaPlugin {
                 // No in-game action required by default; hook here if you
                 // want to strip a linked-only perk on unlink.
             }
+            case "discordChat" -> {
+                String discordUser = data.get("discordUser").getAsString();
+                String message = data.get("message").getAsString();
+                Bukkit.broadcastMessage("§9[Discord] §f" + discordUser + "§7: §f" + message);
+            }
             default -> getLogger().warning("[Bridge] Unknown message type from bot: " + type);
         }
     }
