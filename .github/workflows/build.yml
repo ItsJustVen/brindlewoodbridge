@@ -27,3 +27,20 @@ jobs:
           name: BrindleWoodBridge
           path: target/*.jar
           if-no-files-found: error
+
+      - name: Publish jar to build-output branch
+        run: |
+          set -e
+          JAR=$(ls target/*.jar | grep -v original | head -n1)
+          rm -rf /tmp/publish
+          mkdir /tmp/publish
+          cp "$JAR" /tmp/publish/BrindleWoodBridge.jar
+          cd /tmp/publish
+          git init -q
+          git checkout -q -b build-output
+          git config user.email "actions@github.com"
+          git config user.name "github-actions"
+          git add BrindleWoodBridge.jar
+          git commit -q -m "Build output from ${{ github.sha }}"
+          git remote add origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+          git push -f origin build-output
