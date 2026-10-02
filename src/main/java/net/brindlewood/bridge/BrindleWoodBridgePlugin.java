@@ -94,13 +94,7 @@ public class BrindleWoodBridgePlugin extends JavaPlugin {
                     Bukkit.dispatchCommand(Bukkit.getConsoleSender(), cmd);
                 }
             }
-            case "requestRankSync" -> {
-                // Plugin-side rank source is whatever permissions plugin this
-                // server runs — wire this up to actually read groups and send
-                // "rankUpdate" messages back once you've picked one. Left as
-                // a hook rather than hardcoding a specific perms plugin.
-                getLogger().info("[Bridge] Rank sync requested — implement group lookup for your permissions plugin here.");
-            }
+            case "requestRankSync" -> sendRankSync();
             case "linkConfirmed" -> {
                 String uuid = data.get("uuid").getAsString();
                 Player player = Bukkit.getPlayer(java.util.UUID.fromString(uuid));
@@ -123,5 +117,48 @@ public class BrindleWoodBridgePlugin extends JavaPlugin {
             }
             default -> getLogger().warning("[Bridge] Unknown message type from bot: " + type);
         }
+    }
+
+    /**
+     * Pushes each online player's rank groups to the bot as "rankUpdate"
+     * messages. Uses the LuckPerms API when LuckPerms is installed (accurate,
+     * includes inherited groups); otherwise falls back to checking
+     * "group.<name>" permission nodes for the groups listed under
+     * rankSyncGroups in config.yml. Only online players are synced.
+     */
+    private void sendRankSync() {
+        if (!bridgeClient.isConnected()) return;
+        java.util.List<String> configured = getConfig().getStringList("rankSyncGroups");
+        boolean luckPerms = Bukkit.getPluginManager().getPlugin("LuckPerms") != null;
+        int sent = 0;
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            java.util.List<String> groups;
+            String primary;
+            try {
+                if (luckPerms) {
+                    groups = LuckPermsRanks.groupsOf(player, configured);
+                    primary = LuckPermsRanks.primaryOf(player);
+                } else {
+                    groups = new java.util.ArrayList<>();
+                    for (String g : configured) {
+                        if (player.hasPermission("group." + g)) groups.add(g);
+                    }
+                    primary = groups.isEmpty() ? "default" : groups.get(0);
+                }
+            } catch (Throwable t) {
+                getLogger().warning("[Bridge] Rank lookup failed for " + player.getName() + ": " + t.getMessage());
+                continue;
+            }
+            JsonObject data = new JsonObject();
+            data.addProperty("player", player.getName());
+            data.addProperty("uuid", player.getUniqueId().toString());
+            data.addProperty("primary", primary);
+            com.google.gson.JsonArray arr = new com.google.gson.JsonArray();
+            groups.forEach(arr::add);
+            data.add("groups", arr);
+            bridgeClient.send("rankUpdate", data);
+            sent++;
+        }
+        getLogger().info("[Bridge] Rank sync sent for " + sent + " online player(s).");
     }
 }

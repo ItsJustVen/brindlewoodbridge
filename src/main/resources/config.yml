@@ -23,3 +23,8 @@ rankSyncCommandTemplate: "lp user {player} parent set {role}"
 
 # Command template run when a player finishes linking on the Discord side.
 linkRewardCommandTemplate: "give {player} minecraft:diamond 1"
+
+# Groups reported to Discord on a rank sync. Leave empty to report every
+# group the player holds (LuckPerms only). Without LuckPerms, these are the
+# "group.<name>" permission nodes checked, so list them in priority order.
+rankSyncGroups: []

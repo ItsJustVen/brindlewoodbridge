@@ -2,6 +2,7 @@ name: BrindleWoodBridge
 version: '1.0.0'
 main: net.brindlewood.bridge.BrindleWoodBridgePlugin
 api-version: '1.21'
+softdepend: [LuckPerms]
 author: BrindleWood
 description: Encrypted bridge to the BrindleWood Discord bot. Replaces DiscordSRV.
 

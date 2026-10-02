@@ -52,6 +52,13 @@
       <version>2.19.0</version>
       <scope>provided</scope>
     </dependency>
+    <!-- LuckPerms API — optional at runtime (softdepend), provided by the plugin itself -->
+    <dependency>
+      <groupId>net.luckperms</groupId>
+      <artifactId>api</artifactId>
+      <version>5.4</version>
+      <scope>provided</scope>
+    </dependency>
   </dependencies>
 
   <build>
