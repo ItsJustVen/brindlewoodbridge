@@ -3,6 +3,7 @@ package net.brindlewood.bridge;
 import net.luckperms.api.LuckPerms;
 import net.luckperms.api.LuckPermsProvider;
 import net.luckperms.api.model.user.User;
+import net.luckperms.api.event.user.UserDataRecalculateEvent;
 import org.bukkit.entity.Player;
 
 import java.util.ArrayList;
@@ -31,5 +32,11 @@ final class LuckPermsRanks {
             if (configured.isEmpty() || configured.contains(name)) out.add(name);
         });
         return out;
+    }
+
+    /** Pushes a player's groups to the bot shortly after LuckPerms recalculates their data. */
+    static void subscribe(BrindleWoodBridgePlugin plugin) {
+        LuckPermsProvider.get().getEventBus().subscribe(plugin, UserDataRecalculateEvent.class,
+                e -> plugin.getServer().getScheduler().runTask(plugin, () -> plugin.queueRankPush(e.getUser().getUniqueId(), 60L)));
     }
 }

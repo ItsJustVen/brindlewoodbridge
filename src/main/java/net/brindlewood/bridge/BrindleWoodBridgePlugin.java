@@ -66,6 +66,14 @@ public class BrindleWoodBridgePlugin extends JavaPlugin {
         long ticks = heartbeatMinutes * 60L * 20L;
         Bukkit.getScheduler().runTaskTimer(this, this::sendPlaytimeHeartbeats, ticks, ticks);
 
+        if (Bukkit.getPluginManager().getPlugin("LuckPerms") != null) {
+            try {
+                LuckPermsRanks.subscribe(this);
+            } catch (Throwable t) {
+                getLogger().warning("[Bridge] Could not watch LuckPerms for rank changes: " + t.getMessage());
+            }
+        }
+
         getLogger().info("BrindleWoodBridge enabled.");
     }
 
@@ -175,47 +183,56 @@ public class BrindleWoodBridgePlugin extends JavaPlugin {
         }
     }
 
-    /**
-     * Pushes each online player's rank groups to the bot as "rankUpdate"
-     * messages. Uses the LuckPerms API when LuckPerms is installed (accurate,
-     * includes inherited groups); otherwise falls back to checking
-     * "group.<name>" permission nodes for the groups listed under
-     * rankSyncGroups in config.yml. Only online players are synced.
-     */
+    /** Pushes each online player's rank groups to the bot as "rankUpdate" messages (Minecraft to Discord only). */
     private void sendRankSync() {
         if (!bridgeClient.isConnected()) return;
+        int sent = 0;
+        for (Player player : Bukkit.getOnlinePlayers()) if (sendRankFor(player)) sent++;
+        getLogger().info("[Bridge] Rank sync sent for " + sent + " online player(s).");
+    }
+
+    /** Reports one online player's groups. Called on request, on join, and when LuckPerms says they changed. */
+    public boolean sendRankFor(Player player) {
+        if (!bridgeClient.isConnected() || !player.isOnline()) return false;
         java.util.List<String> configured = getConfig().getStringList("rankSyncGroups");
         boolean luckPerms = Bukkit.getPluginManager().getPlugin("LuckPerms") != null;
-        int sent = 0;
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            java.util.List<String> groups;
-            String primary;
-            try {
-                if (luckPerms) {
-                    groups = LuckPermsRanks.groupsOf(player, configured);
-                    primary = LuckPermsRanks.primaryOf(player);
-                } else {
-                    groups = new java.util.ArrayList<>();
-                    for (String g : configured) {
-                        if (player.hasPermission("group." + g)) groups.add(g);
-                    }
-                    primary = groups.isEmpty() ? "default" : groups.get(0);
+        java.util.List<String> groups;
+        String primary;
+        try {
+            if (luckPerms) {
+                groups = LuckPermsRanks.groupsOf(player, configured);
+                primary = LuckPermsRanks.primaryOf(player);
+            } else {
+                groups = new java.util.ArrayList<>();
+                for (String g : configured) {
+                    if (player.hasPermission("group." + g)) groups.add(g);
                 }
-            } catch (Throwable t) {
-                getLogger().warning("[Bridge] Rank lookup failed for " + player.getName() + ": " + t.getMessage());
-                continue;
+                primary = groups.isEmpty() ? "default" : groups.get(0);
             }
-            JsonObject data = new JsonObject();
-            data.addProperty("player", player.getName());
-            data.addProperty("uuid", player.getUniqueId().toString());
-            data.addProperty("primary", primary);
-            data.addProperty("edition", FloodgateInfo.of(player).edition());
-            com.google.gson.JsonArray arr = new com.google.gson.JsonArray();
-            groups.forEach(arr::add);
-            data.add("groups", arr);
-            bridgeClient.send("rankUpdate", data);
-            sent++;
+        } catch (Throwable t) {
+            getLogger().warning("[Bridge] Rank lookup failed for " + player.getName() + ": " + t.getMessage());
+            return false;
         }
-        getLogger().info("[Bridge] Rank sync sent for " + sent + " online player(s).");
+        JsonObject data = new JsonObject();
+        data.addProperty("player", player.getName());
+        data.addProperty("uuid", player.getUniqueId().toString());
+        data.addProperty("primary", primary);
+        data.addProperty("edition", FloodgateInfo.of(player).edition());
+        com.google.gson.JsonArray arr = new com.google.gson.JsonArray();
+        groups.forEach(arr::add);
+        data.add("groups", arr);
+        return bridgeClient.send("rankUpdate", data);
+    }
+
+    /** Debounced push after a LuckPerms change (main thread). */
+    private final java.util.Set<java.util.UUID> rankPushQueued = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    public void queueRankPush(java.util.UUID id, long delayTicks) {
+        if (!rankPushQueued.add(id)) return;
+        Bukkit.getScheduler().runTaskLater(this, () -> {
+            rankPushQueued.remove(id);
+            Player p = Bukkit.getPlayer(id);
+            if (p != null) sendRankFor(p);
+        }, delayTicks);
     }
 }

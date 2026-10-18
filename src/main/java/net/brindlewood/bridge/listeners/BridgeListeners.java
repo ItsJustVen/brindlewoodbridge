@@ -45,6 +45,7 @@ public class BridgeListeners implements Listener {
         data.addProperty("edition", info.edition());
         if (info.xuid() != null) data.addProperty("xuid", info.xuid());
         plugin.getBridgeClient().send("join", data);
+        plugin.queueRankPush(player.getUniqueId(), 40L); // report their groups shortly after they join
     }
 
     @EventHandler
