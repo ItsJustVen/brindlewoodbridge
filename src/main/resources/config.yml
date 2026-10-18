@@ -25,6 +25,9 @@ console:
     - "say"
     - "kick"
     - "save-all"
+    - "restart"
+    - "mcxboxbroadcast reload"
+    - "crates key give"
 
 # Command run once, in the console, when a player finishes linking. {player} and {uuid} are filled in.
 # Each reward is tied to an id from the bot and is never run twice for the same id. Leave blank for none.
