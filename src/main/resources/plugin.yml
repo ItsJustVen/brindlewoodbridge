@@ -1,5 +1,5 @@
 name: BrindleWoodBridge
-version: '1.0.0'
+version: '2.0.0'
 main: net.brindlewood.bridge.BrindleWoodBridgePlugin
 api-version: '1.21'
 softdepend: [LuckPerms]
@@ -9,7 +9,7 @@ description: Encrypted bridge to the BrindleWood Discord bot. Replaces DiscordSR
 commands:
   bwbridge:
     description: Manage the Discord bridge connection
-    usage: /bwbridge <pair|status|reconnect> [code]
+    usage: /bwbridge <status|reconnect>
     permission: brindlewood.bridge.admin
   link:
     description: Link your Minecraft account to Discord

@@ -1,30 +1,35 @@
-# BrindleWood Bridge — plugin config
-# secret MUST match BRIDGE_SECRET in the bot's .env exactly, or the
-# connection will be silently rejected (wrong key = failed decryption,
-# which the bot treats identically to a malicious/garbage connection).
+# BrindleWood Bridge - plugin config (protocol v2)
+#
+# bridge.secret MUST be identical to BRIDGE_SECRET in the bot's environment.
+# A wrong secret looks like "bot frame rejected (crypto)" in this server's log.
+# Every message is AES-256-GCM encrypted and authenticated with this secret, carries a unique id and a
+# timestamp, and is rejected if repeated or stale. Keep this server's clock correct (NTP): messages
+# more than 2 minutes off are refused.
 bridge:
-  host: "127.0.0.1"        # hostname/IP where the bot process runs
-  port: 8443                 # must match BRIDGE_PORT in the bot's .env
+  host: "127.0.0.1"          # where the bot's bridge listens
+  port: 8443                 # must match BRIDGE_PORT on the bot
+  tls: false                 # true only if the bot serves wss:// with a certificate this server trusts
   secret: "CHANGE_ME_TO_MATCH_BRIDGE_SECRET"
-  reconnectDelaySeconds: 10
-
-# Run once: leave blank until you use /bwbridge pair <code> with the code
-# from the bot's /bridge pair command. After a successful pairing the bot
-# remembers it and this doesn't need to be set again.
-pairCode: ""
+  reconnectBaseSeconds: 5    # first retry delay; doubles each failure with random jitter
+  reconnectMaxSeconds: 300   # longest wait between retries
 
 playtimeHeartbeatMinutes: 5
 
-# Command template run on this server when a rank-sync push arrives from
-# Discord. {player} and {role} are substituted. Adjust to whatever
-# permissions plugin this server actually runs (LuckPerms shown as the
-# common default) — this is intentionally not hardcoded to one plugin.
-rankSyncCommandTemplate: "lp user {player} parent set {role}"
+# Console commands the bot may run on this server. DEFAULT-DENY: a command runs only if it starts with
+# one of these. The bot has its own list too; a command must be on BOTH. Add nothing you would not be
+# comfortable letting a Discord staff member type. Never add op, stop, lp, luckperms, execute, or similar.
+console:
+  allowed:
+    - "list"
+    - "tps"
+    - "say"
+    - "kick"
+    - "save-all"
 
-# Command template run when a player finishes linking on the Discord side.
+# Command run once, in the console, when a player finishes linking. {player} and {uuid} are filled in.
+# Each reward is tied to an id from the bot and is never run twice for the same id. Leave blank for none.
 linkRewardCommandTemplate: "give {player} minecraft:diamond 1"
 
-# Groups reported to Discord on a rank sync. Leave empty to report every
-# group the player holds (LuckPerms only). Without LuckPerms, these are the
-# "group.<name>" permission nodes checked, so list them in priority order.
+# LuckPerms groups to report to the bot (empty = report every group the player has).
+# Ranks flow Minecraft -> Discord only. Nothing here lets Discord change a Minecraft rank.
 rankSyncGroups: []

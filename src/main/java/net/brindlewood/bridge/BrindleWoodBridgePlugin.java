@@ -14,6 +14,10 @@ import org.bukkit.plugin.java.JavaPlugin;
 public class BrindleWoodBridgePlugin extends JavaPlugin {
     private BridgeClient bridgeClient;
     private ConsoleRelayAppender consoleAppender;
+    private CommandGate commandGate = new CommandGate(java.util.List.of());
+    private RewardLedger rewards;
+    private final java.util.concurrent.atomic.AtomicInteger consoleLinesThisSecond = new java.util.concurrent.atomic.AtomicInteger();
+    private volatile long consoleWindow = 0;
 
     public BridgeClient getBridgeClient() {
         return bridgeClient;
@@ -26,16 +30,20 @@ public class BrindleWoodBridgePlugin extends JavaPlugin {
 
         String host = cfg.getString("bridge.host", "127.0.0.1");
         int port = cfg.getInt("bridge.port", 8443);
+        boolean tls = cfg.getBoolean("bridge.tls", false);
         String secret = cfg.getString("bridge.secret", "");
-        int reconnectDelay = cfg.getInt("bridge.reconnectDelaySeconds", 10);
+        int baseDelay = cfg.getInt("bridge.reconnectBaseSeconds", 5);
+        int maxDelay = cfg.getInt("bridge.reconnectMaxSeconds", 300);
 
         if (secret.isEmpty() || secret.equals("CHANGE_ME_TO_MATCH_BRIDGE_SECRET")) {
-            getLogger().severe("bridge.secret is not set in config.yml — it must match BRIDGE_SECRET in the bot's .env. The bridge will not connect until this is fixed.");
+            getLogger().severe("bridge.secret is not set in config.yml - it must match BRIDGE_SECRET in the bot's .env. The bridge will not connect until this is fixed.");
+        } else {
+            commandGate = new CommandGate(cfg.getStringList("console.allowed"));
+            rewards = new RewardLedger(getDataFolder());
+            bridgeClient = new BridgeClient(this, host, port, tls, secret, baseDelay, maxDelay, this::handleBridgeMessage);
+            bridgeClient.connect();
         }
-
-        bridgeClient = new BridgeClient(this, host, port, secret, reconnectDelay, this::handleBridgeMessage);
-        String pairCode = cfg.getString("pairCode", "");
-        bridgeClient.connect(pairCode.isEmpty() ? null : pairCode);
+        if (bridgeClient == null) bridgeClient = new BridgeClient(this, host, port, tls, "unset-secret", baseDelay, maxDelay, (t, d) -> { });
 
         getServer().getPluginManager().registerEvents(new BridgeListeners(this), this);
         getCommand("link").setExecutor(new LinkCommand(this));
@@ -43,9 +51,13 @@ public class BrindleWoodBridgePlugin extends JavaPlugin {
 
         // Console relay — attach to the server's root Log4j2 logger.
         consoleAppender = ConsoleRelayAppender.create(line -> {
+            if (!bridgeClient.isConnected()) return;
+            long sec = System.currentTimeMillis() / 1000;
+            if (sec != consoleWindow) { consoleWindow = sec; consoleLinesThisSecond.set(0); }
+            if (consoleLinesThisSecond.incrementAndGet() > 40) return; // protect the bridge during log floods
             JsonObject data = new JsonObject();
-            data.addProperty("line", line);
-            if (bridgeClient.isConnected()) bridgeClient.send("console", data);
+            data.addProperty("line", line.length() > 900 ? line.substring(0, 900) : line);
+            bridgeClient.send("console", data);
         });
         ((Logger) LogManager.getRootLogger()).addAppender(consoleAppender);
 
@@ -78,44 +90,88 @@ public class BrindleWoodBridgePlugin extends JavaPlugin {
 
     /** Dispatches a decrypted, authenticated message from the bot. Runs on the main thread (see BridgeClient). */
     private void handleBridgeMessage(String type, JsonObject data) {
-        switch (type) {
-            case "command" -> {
-                String cmd = data.get("command").getAsString();
-                Bukkit.dispatchCommand(Bukkit.getConsoleSender(), cmd);
-            }
-            case "setRank" -> {
-                String uuid = data.get("uuid").getAsString();
-                String role = data.get("role").getAsString();
-                Player player = Bukkit.getPlayer(java.util.UUID.fromString(uuid));
-                String playerName = player != null ? player.getName() : uuid;
-                String template = getConfig().getString("rankSyncCommandTemplate", "");
-                if (!template.isEmpty()) {
-                    String cmd = template.replace("{player}", playerName).replace("{role}", role);
-                    Bukkit.dispatchCommand(Bukkit.getConsoleSender(), cmd);
+        try {
+            switch (type) {
+                case "command" -> runAllowedCommand(data);
+                case "requestRankSync" -> sendRankSync();
+                case "linkConfirmed" -> grantLinkReward(data);
+                case "unlinked" -> { /* no in-game action by default */ }
+                case "discordChat" -> {
+                    String discordUser = clean(data.get("discordUser").getAsString(), 32);
+                    String message = clean(data.get("message").getAsString(), 200);
+                    if (!message.isEmpty()) Bukkit.broadcastMessage("\u00a79[Discord] \u00a7f" + discordUser + "\u00a77: \u00a7f" + message);
                 }
+                default -> getLogger().warning("[Bridge] Ignoring unknown message type from bot: " + type);
             }
-            case "requestRankSync" -> sendRankSync();
-            case "linkConfirmed" -> {
-                String uuid = data.get("uuid").getAsString();
-                Player player = Bukkit.getPlayer(java.util.UUID.fromString(uuid));
-                if (player != null) {
-                    String rewardTemplate = getConfig().getString("linkRewardCommandTemplate", "");
-                    if (!rewardTemplate.isEmpty()) {
-                        Bukkit.dispatchCommand(Bukkit.getConsoleSender(), rewardTemplate.replace("{player}", player.getName()));
-                    }
-                    player.sendMessage("§aYour Discord account is now linked!");
-                }
+        } catch (RuntimeException e) {
+            getLogger().warning("[Bridge] Could not handle a '" + type + "' message: " + e.getMessage());
+        }
+    }
+
+    /** Removes formatting codes and control characters from text that came from Discord. */
+    private static String clean(String text, int max) {
+        String t = text.replaceAll("[\\p{Cntrl}\\u00a7]", "").trim();
+        return t.length() > max ? t.substring(0, max) : t;
+    }
+
+    private void runAllowedCommand(JsonObject data) {
+        String requestId = data.has("requestId") ? data.get("requestId").getAsString() : null;
+        String command = data.has("command") ? data.get("command").getAsString() : "";
+        String refusal = commandGate.check(command);
+        boolean ok = false;
+        String detail;
+        if (refusal != null) {
+            detail = "refused by the plugin: " + refusal;
+            getLogger().warning("[Bridge] Refused a console command from the bot (" + refusal + ").");
+        } else {
+            ok = Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
+            detail = ok ? "ran" : "the server did not recognise that command";
+        }
+        if (requestId != null) {
+            JsonObject r = new JsonObject();
+            r.addProperty("requestId", requestId);
+            r.addProperty("ok", ok);
+            r.addProperty("detail", detail);
+            bridgeClient.send("commandResult", r);
+        }
+    }
+
+    private void grantLinkReward(JsonObject data) {
+        String rewardId = data.has("rewardId") ? data.get("rewardId").getAsString() : null;
+        java.util.UUID uuid = java.util.UUID.fromString(data.get("uuid").getAsString());
+        Player player = Bukkit.getPlayer(uuid);
+        boolean ok = false;
+        String detail;
+        if (rewardId == null || rewardId.length() < 8) {
+            detail = "missing reward id";
+        } else if (rewards.has(rewardId)) {
+            ok = true;
+            detail = "already granted";
+        } else if (player == null) {
+            detail = "player is offline";
+        } else {
+            String template = getConfig().getString("linkRewardCommandTemplate", "");
+            if (template.isEmpty()) {
+                ok = true;
+                detail = "no reward configured";
+                rewards.claim(rewardId);
+            } else if (!player.getName().matches("[A-Za-z0-9_.\\-]{1,32}")) {
+                detail = "player name is not safe to use in a command";
+            } else if (!rewards.claim(rewardId)) {
+                detail = "could not record the reward";
+            } else {
+                Bukkit.dispatchCommand(Bukkit.getConsoleSender(), template.replace("{player}", player.getName()).replace("{uuid}", uuid.toString()));
+                ok = true;
+                detail = "granted";
             }
-            case "unlinked" -> {
-                // No in-game action required by default; hook here if you
-                // want to strip a linked-only perk on unlink.
-            }
-            case "discordChat" -> {
-                String discordUser = data.get("discordUser").getAsString();
-                String message = data.get("message").getAsString();
-                Bukkit.broadcastMessage("§9[Discord] §f" + discordUser + "§7: §f" + message);
-            }
-            default -> getLogger().warning("[Bridge] Unknown message type from bot: " + type);
+            if (ok) player.sendMessage("\u00a7aYour Discord account is now linked!");
+        }
+        if (rewardId != null) {
+            JsonObject r = new JsonObject();
+            r.addProperty("rewardId", rewardId);
+            r.addProperty("ok", ok);
+            r.addProperty("detail", detail);
+            bridgeClient.send("rewardResult", r);
         }
     }
 
@@ -153,6 +209,7 @@ public class BrindleWoodBridgePlugin extends JavaPlugin {
             data.addProperty("player", player.getName());
             data.addProperty("uuid", player.getUniqueId().toString());
             data.addProperty("primary", primary);
+            data.addProperty("edition", FloodgateInfo.of(player).edition());
             com.google.gson.JsonArray arr = new com.google.gson.JsonArray();
             groups.forEach(arr::add);
             data.add("groups", arr);

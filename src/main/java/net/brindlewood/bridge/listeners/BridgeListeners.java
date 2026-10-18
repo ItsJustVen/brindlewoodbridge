@@ -41,6 +41,9 @@ public class BridgeListeners implements Listener {
         JsonObject data = new JsonObject();
         data.addProperty("player", player.getName());
         data.addProperty("uuid", player.getUniqueId().toString());
+        net.brindlewood.bridge.FloodgateInfo.Info info = net.brindlewood.bridge.FloodgateInfo.of(player);
+        data.addProperty("edition", info.edition());
+        if (info.xuid() != null) data.addProperty("xuid", info.xuid());
         plugin.getBridgeClient().send("join", data);
     }
 

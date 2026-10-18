@@ -1,0 +1,27 @@
+name: Verify build (no publish)
+
+on:
+  push:
+    branches-ignore: [main, build-output]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Compile and package (artifact only, nothing is published)
+        run: mvn -B package --file pom.xml
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BrindleWoodBridge-${{ github.ref_name }}
+          path: target/*.jar
+          if-no-files-found: error
