@@ -102,6 +102,7 @@ public class BrindleWoodBridgePlugin extends JavaPlugin {
             switch (type) {
                 case "command" -> runAllowedCommand(data);
                 case "requestRankSync" -> sendRankSync();
+                case "requestPlugins" -> sendPluginInventory();
                 case "linkConfirmed" -> grantLinkReward(data);
                 case "unlinked" -> { /* no in-game action by default */ }
                 case "discordChat" -> {
@@ -222,6 +223,32 @@ public class BrindleWoodBridgePlugin extends JavaPlugin {
         groups.forEach(arr::add);
         data.add("groups", arr);
         return bridgeClient.send("rankUpdate", data);
+    }
+
+    /** Reports every installed plugin (name, version, website) so the bot can watch for updates. Read-only. */
+    private void sendPluginInventory() {
+        org.bukkit.plugin.Plugin[] all = Bukkit.getPluginManager().getPlugins();
+        java.util.List<org.bukkit.plugin.Plugin> sorted = new java.util.ArrayList<>(java.util.Arrays.asList(all));
+        sorted.sort(java.util.Comparator.comparing(p -> p.getName().toLowerCase()));
+        int per = 12;
+        int batches = Math.max(1, (sorted.size() + per - 1) / per);
+        for (int b = 0; b < batches; b++) {
+            com.google.gson.JsonArray items = new com.google.gson.JsonArray();
+            for (int i = b * per; i < Math.min(sorted.size(), (b + 1) * per); i++) {
+                org.bukkit.plugin.Plugin p = sorted.get(i);
+                JsonObject o = new JsonObject();
+                o.addProperty("name", p.getName());
+                o.addProperty("version", p.getPluginMeta().getVersion());
+                String site = p.getPluginMeta().getWebsite();
+                o.addProperty("website", site == null ? "" : site);
+                items.add(o);
+            }
+            JsonObject data = new JsonObject();
+            data.addProperty("batch", b);
+            data.addProperty("batches", batches);
+            data.add("items", items);
+            bridgeClient.send("plugins", data);
+        }
     }
 
     /** Debounced push after a LuckPerms change (main thread). */
