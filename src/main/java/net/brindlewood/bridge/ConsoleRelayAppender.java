@@ -29,6 +29,16 @@ public class ConsoleRelayAppender extends AbstractAppender {
         return appender;
     }
 
+    private static final java.util.regex.Pattern IPV4 = java.util.regex.Pattern.compile("\\b(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\b");
+    private static final java.util.regex.Pattern SECRET_CMD = java.util.regex.Pattern.compile(
+            "(?i)(/|\\s)(login|l|register|reg|changepassword|changepass|password|passwd|authme|2fa|totp)\\s");
+
+    /** Hides player IP addresses and drops lines that may carry passwords. Returns null to drop the line. */
+    public static String redact(String line) {
+        if (SECRET_CMD.matcher(line).find() && line.toLowerCase().contains("issued server command")) return null;
+        return IPV4.matcher(line).replaceAll("x.x.x.x");
+    }
+
     @Override
     public void append(LogEvent event) {
         // Skip our own bridge log lines to avoid an infinite relay loop.

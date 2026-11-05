@@ -41,5 +41,13 @@ final class RewardLedger {
         return true;
     }
 
+    /** Forgets a claim whose reward command failed, so the bot's retry can try again. */
+    synchronized void release(String id) {
+        if (!granted.remove(id)) return;
+        YamlConfiguration y = new YamlConfiguration();
+        y.set("granted", new ArrayList<>(granted));
+        try { y.save(file); } catch (IOException ignored) { /* worst case: reward is skipped, never duplicated */ }
+    }
+
     synchronized List<String> snapshot() { return new ArrayList<>(granted); }
 }

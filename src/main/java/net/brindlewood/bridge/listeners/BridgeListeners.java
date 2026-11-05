@@ -24,7 +24,8 @@ public class BridgeListeners implements Listener {
         this.plugin = plugin;
     }
 
-    @EventHandler
+    // MONITOR + ignoreCancelled: messages blocked by a mute (AdvancedBan) or another plugin never reach Discord.
+    @EventHandler(priority = org.bukkit.event.EventPriority.MONITOR, ignoreCancelled = true)
     public void onChat(AsyncChatEvent event) {
         Player player = event.getPlayer();
         String message = PlainTextComponentSerializer.plainText().serialize(event.message());

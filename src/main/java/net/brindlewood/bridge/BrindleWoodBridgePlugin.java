@@ -56,7 +56,9 @@ public class BrindleWoodBridgePlugin extends JavaPlugin {
             if (sec != consoleWindow) { consoleWindow = sec; consoleLinesThisSecond.set(0); }
             if (consoleLinesThisSecond.incrementAndGet() > 40) return; // protect the bridge during log floods
             JsonObject data = new JsonObject();
-            data.addProperty("line", line.length() > 900 ? line.substring(0, 900) : line);
+            String safe = ConsoleRelayAppender.redact(line);
+            if (safe == null) return;
+            data.addProperty("line", safe.length() > 900 ? safe.substring(0, 900) : safe);
             bridgeClient.send("console", data);
         });
         ((Logger) LogManager.getRootLogger()).addAppender(consoleAppender);
@@ -169,9 +171,15 @@ public class BrindleWoodBridgePlugin extends JavaPlugin {
             } else if (!rewards.claim(rewardId)) {
                 detail = "could not record the reward";
             } else {
-                Bukkit.dispatchCommand(Bukkit.getConsoleSender(), template.replace("{player}", player.getName()).replace("{uuid}", uuid.toString()));
-                ok = true;
-                detail = "granted";
+                boolean ran = Bukkit.dispatchCommand(Bukkit.getConsoleSender(), template.replace("{player}", player.getName()).replace("{uuid}", uuid.toString()));
+                if (ran) {
+                    ok = true;
+                    detail = "granted";
+                } else {
+                    rewards.release(rewardId); // command failed: let the bot's retry try again
+                    detail = "the reward command did not run - check linkRewardCommandTemplate";
+                    getLogger().warning("[Bridge] Link reward command failed for " + player.getName() + "; will retry.");
+                }
             }
             if (ok) player.sendMessage("\u00a7aYour Discord account is now linked!");
         }
