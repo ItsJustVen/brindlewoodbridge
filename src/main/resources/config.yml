@@ -15,6 +15,12 @@ bridge:
 
 playtimeHeartbeatMinutes: 5
 
+# Sends the bot server speed numbers (TPS, tick time, memory, players) so it can show /perf and warn staff about lag.
+# Read-only. The bot needs the matching update (it ignores this message until then, which is harmless).
+perf:
+  enabled: true
+  intervalSeconds: 60        # 10 or more
+
 # Console commands the bot may run on this server. DEFAULT-DENY: a command runs only if it starts with
 # one of these. The bot has its own list too; a command must be on BOTH. Add nothing you would not be
 # comfortable letting a Discord staff member type. Never add op, stop, lp, luckperms, execute, or similar.

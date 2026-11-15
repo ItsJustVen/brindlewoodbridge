@@ -66,6 +66,13 @@ public class BrindleWoodBridgePlugin extends JavaPlugin {
         long ticks = heartbeatMinutes * 60L * 20L;
         Bukkit.getScheduler().runTaskTimer(this, this::sendPlaytimeHeartbeats, ticks, ticks);
 
+        // Performance numbers (TPS, tick time, memory) for the bot's /perf command and lag alerts. Read-only.
+        if (cfg.getBoolean("perf.enabled", true)) {
+            long perfTicks = Math.max(10, cfg.getInt("perf.intervalSeconds", 60)) * 20L;
+            PerfReporter perf = new PerfReporter(this);
+            Bukkit.getScheduler().runTaskTimer(this, perf::report, perfTicks, perfTicks);
+        }
+
         if (Bukkit.getPluginManager().getPlugin("LuckPerms") != null) {
             try {
                 LuckPermsRanks.subscribe(this);
